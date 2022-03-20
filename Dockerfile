@@ -20,4 +20,4 @@ RUN apk --no-cache add libpcap libcap && \
 
 USER 65534
 
-CMD ["/go-dhcplogger", "-interface=eth0"]
+ENTRYPOINT ["/go-dhcplogger"]
