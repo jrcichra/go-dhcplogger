@@ -11,15 +11,16 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/pcap"
 	"github.com/namsral/flag"
+
+	// add profiler
+	"net/http"
+	_ "net/http/pprof"
 )
 
 func main() {
 	iface := flag.String("interface", "", "Interface to capture packets on")
-	dbHost := flag.String("dbhost", "postgres", "PostgresSQL host")
-	dbPort := flag.Int("dbport", 5432, "PostgreSQL port")
-	dbUser := flag.String("dbuser", "dhcplogger", "PostgreSQL user")
-	dbPassword := flag.String("dbpassword", "dhcplogger", "PostgreSQL password")
-	dbName := flag.String("dbname", "dhcplogger", "PostgreSQL database name")
+	dbType := flag.String("dbtype", "postgres", "Database type")
+	dbDSN := flag.String("dsn", "", "Database DSN")
 	workers := flag.Int("workers", 4, "Number of goroutines handling packets")
 	retries := flag.Int("retries", 30, "Retry count for sql operations")
 	maxQueueLength := flag.Int("max-queue-length", 1000, "Maximum number of dhcp packets to hold in queue")
@@ -30,14 +31,19 @@ func main() {
 		panic(fmt.Errorf("No interface specified"))
 	}
 
-	feeder, err := newFeeder(*dbHost, *dbPort, *dbUser, *dbPassword, *dbName, *maxQueueLength, *retries)
+	// start profiler
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+
+	feeder, err := newFeeder(*dbType, *dbDSN, *maxQueueLength, *retries)
 	if err != nil {
 		panic(err)
 	}
 
 	feeder.Run(*workers)
 
-	handle, err := pcap.OpenLive(*iface, 1600, false, time.Second)
+	handle, err := pcap.OpenLive(*iface, 1600, true, time.Second)
 	if err != nil {
 		panic(err)
 	}
