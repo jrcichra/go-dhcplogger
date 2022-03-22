@@ -2,16 +2,17 @@ package main
 
 import (
 	"database/sql"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/google/gopacket"
 	"github.com/insomniacslk/dhcp/dhcpv4"
+	"github.com/insomniacslk/dhcp/iana"
 	_ "github.com/lib/pq"
 )
 
@@ -23,6 +24,49 @@ type Feeder struct {
 	queue   chan gopacket.Packet
 	workers sync.WaitGroup
 	retries int
+}
+
+// hack to avoid json marshalling byte[] into base64 strings
+type CustomDHCPPacket struct {
+	OpCode         dhcpv4.OpcodeType
+	HWType         iana.HWType
+	HopCount       uint8
+	TransactionID  dhcpv4.TransactionID
+	NumSeconds     uint16
+	Flags          uint16
+	ClientIPAddr   net.IP
+	YourIPAddr     net.IP
+	ServerIPAddr   net.IP
+	GatewayIPAddr  net.IP
+	ClientHWAddr   string // stringified
+	ServerHostName string
+	BootFileName   string
+	Options        map[uint8]string //stringified
+}
+
+func (c *CustomDHCPPacket) New(d *dhcpv4.DHCPv4) {
+	c.OpCode = d.OpCode
+	c.HWType = d.HWType
+	c.HopCount = d.HopCount
+	c.TransactionID = d.TransactionID
+	c.NumSeconds = d.NumSeconds
+	c.Flags = d.Flags
+	c.ClientIPAddr = d.ClientIPAddr
+	c.YourIPAddr = d.YourIPAddr
+	c.ServerIPAddr = d.ServerIPAddr
+	c.GatewayIPAddr = d.GatewayIPAddr
+	c.ClientHWAddr = d.ClientHWAddr.String()
+	c.ServerHostName = d.ServerHostName
+	c.BootFileName = d.BootFileName
+	c.Options = make(map[uint8]string)
+	for i, option := range d.Options {
+		full := fmt.Sprint(option)
+		c.Options[i] = full[1 : len(full)-1]
+	}
+}
+
+func (c *CustomDHCPPacket) ToBytes() ([]byte, error) {
+	return json.Marshal(c)
 }
 
 // New instantiates a new Feeder
@@ -39,9 +83,9 @@ func newFeeder(dbType string, dsn string, maxQueueLength int, retries int) (*Fee
 	var insert string
 	switch dbType {
 	case "postgres":
-		insert = `INSERT INTO dhcp_packets (ts, client, ip, lease_time, packet) VALUES ($1, $2, $3, $4, $5)`
+		insert = `INSERT INTO dhcp_packets (packet) VALUES ($1)`
 	case "mysql":
-		insert = `INSERT INTO dhcp_packets (ts, client, ip, lease_time, packet) VALUES (?, ?, ?, ?, ?)`
+		insert = `INSERT INTO dhcp_packets (packet) VALUES (?)`
 	default:
 		return nil, fmt.Errorf("unknown database type: %s", dbType)
 	}
@@ -91,38 +135,24 @@ func (f *Feeder) processPacket(packet gopacket.Packet) {
 		return
 	}
 
-	if dhcpPacket.MessageType() != dhcpv4.MessageTypeOffer {
-		fmt.Println("Not an offer packet")
+	log.Println(dhcpPacket)
+
+	customPacket := CustomDHCPPacket{}
+	customPacket.New(dhcpPacket)
+	buf, err := customPacket.ToBytes()
+	if err != nil {
+		fmt.Println("Error marshalling packet:", err)
 		return
-	}
-
-	ts := time.Now()
-
-	client := dhcpPacket.ClientHWAddr.String()
-
-	yourip := dhcpPacket.YourIPAddr.String()
-
-	var leaseTime sql.NullInt32
-	leaseTimeRaw := dhcpPacket.Options.Get(dhcpv4.OptionIPAddressLeaseTime)
-	if len(leaseTimeRaw) == 4 {
-		leaseTime.Int32 = int32(binary.BigEndian.Uint32(leaseTimeRaw))
-		leaseTime.Valid = true
-	}
-
-	var buf []byte
-	if buf, err = json.Marshal(dhcpPacket); err != nil {
-		fmt.Println("Failed to json.Marshal dhcp packet: ", err)
 	}
 
 	i := 0
 	for {
-		_, err := f.stmt.Exec(ts, client, yourip, leaseTime, buf)
+		_, err := f.stmt.Exec(buf)
 		if err == nil {
 			return
 		}
-
 		if i == f.retries {
-			log.Printf("%s/%s: max retries exhausted, dropping packet\n", client, yourip)
+			log.Printf("max retries exhausted, dropping packet\n")
 			return
 		}
 

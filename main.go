@@ -49,7 +49,7 @@ func main() {
 	}
 
 	// Filter for bootp reply packets
-	if err := handle.SetBPFFilter("udp and src port 67 and udp[8:1] == 2"); err != nil {
+	if err := handle.SetBPFFilter("udp and (src port 67 or src port 68)"); err != nil {
 		panic(err)
 	}
 
