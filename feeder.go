@@ -8,6 +8,7 @@ import (
 	"net"
 	"sync"
 	"time"
+	"unicode"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/google/gopacket"
@@ -15,6 +16,15 @@ import (
 	"github.com/insomniacslk/dhcp/iana"
 	_ "github.com/lib/pq"
 )
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] > unicode.MaxASCII || s[i] < 32 {
+			return false
+		}
+	}
+	return true
+}
 
 // Feeder parses & feeds received packets to SQL
 type Feeder struct {
@@ -60,8 +70,13 @@ func (c *CustomDHCPPacket) New(d *dhcpv4.DHCPv4) {
 	c.BootFileName = d.BootFileName
 	c.Options = make(map[uint8]string)
 	for i, option := range d.Options {
-		full := fmt.Sprint(option)
-		c.Options[i] = full[1 : len(full)-1]
+		strOption := string(option)
+		if isASCII(strOption) {
+			c.Options[i] = strOption
+		} else {
+			full := fmt.Sprint(option)
+			c.Options[i] = full[1 : len(full)-1]
+		}
 	}
 }
 
