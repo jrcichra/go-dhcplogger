@@ -8,7 +8,6 @@ import (
 	"net"
 	"sync"
 	"time"
-	"unicode"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/google/gopacket"
@@ -19,7 +18,7 @@ import (
 
 func isASCII(s string) bool {
 	for i := 0; i < len(s); i++ {
-		if s[i] > unicode.MaxASCII || s[i] < 32 {
+		if s[i] > 125 || s[i] < 32 {
 			return false
 		}
 	}
