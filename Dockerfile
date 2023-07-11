@@ -1,4 +1,4 @@
-FROM golang:1.20.3-alpine3.17 AS build
+FROM golang:1.20.6-alpine3.17 AS build
 
 RUN apk --no-cache add gcc libc-dev libpcap-dev
 
