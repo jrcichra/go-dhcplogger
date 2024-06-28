@@ -4,22 +4,6 @@
 
 Package for capturing and logging all sent DHCPACK packets on an interface. May be useful for auditing purposes.
 
-## Preparations
-
-Packets are sent to a PostgreSQL database, the table may be prepared with the following statement:
-
-```sql
-CREATE TABLE dhcp_packets (
-    id        bigserial primary key,
-    ts        timestamptz not null,
-    client    macaddr not null,
-    agent     varchar(256),
-    ip        inet not null,
-    leasetime integer,
-    packet    text
-);
-```
-
 ## Invocation
 
 The program may be run as:
