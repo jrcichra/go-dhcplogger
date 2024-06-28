@@ -119,6 +119,16 @@ func newFeeder(dbType string, dsn string, maxQueueLength int, retries int) (*Fee
 		return nil, err
 	}
 
+	// create index if it doesn't exist
+	switch dbType {
+	case "postgres":
+		db.Exec("CREATE INDEX ON dhcp_packets(ts)")
+	case "mysql":
+		db.Exec("CREATE INDEX ON dhcp_packets(ts)")
+	default:
+		return nil, fmt.Errorf("unknown database type: %s", dbType)
+	}
+
 	var insert string
 	switch dbType {
 	case "postgres":
