@@ -145,7 +145,7 @@ func (f *Feeder) worker() {
 func (f *Feeder) processPacket(packet gopacket.Packet) {
 	dhcpPacket, err := dhcpv4.FromBytes(packet.TransportLayer().LayerPayload())
 	if err != nil {
-		fmt.Println("Error parsing packet:", err)
+		fmt.Println("error parsing packet:", err)
 		return
 	}
 
@@ -155,22 +155,20 @@ func (f *Feeder) processPacket(packet gopacket.Packet) {
 	customPacket.New(dhcpPacket)
 	buf, err := customPacket.ToBytes()
 	if err != nil {
-		fmt.Println("Error marshalling packet:", err)
+		fmt.Println("error marshalling packet:", err)
 		return
 	}
 
 	i := 0
-	for {
+	for i < f.retries {
 		_, err := f.stmt.Exec(buf)
 		if err == nil {
 			return
+		} else {
+			log.Println("error inserting packet:", err)
 		}
-		if i == f.retries {
-			log.Printf("max retries exhausted, dropping packet\n")
-			return
-		}
-
-		i++
 		time.Sleep(time.Second)
+		i++
 	}
+	log.Printf("max retries exhausted, dropping packet\n")
 }
