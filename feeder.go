@@ -97,14 +97,17 @@ func newFeeder(dbType string, dsn string, maxQueueLength int, retries int) (*Fee
 	// create table if it doesn't exist
 	switch dbType {
 	case "postgres":
-		_, err = db.Exec(`CREATE TABLE IF NOT EXISTS dhcp_packets 
-	id        bigserial primary key,
-    ts        timestamptz not null,
-    client    macaddr not null,
-    agent     varchar(256),
-    ip        inet not null,
-    leasetime integer,
-    packet    text`)
+		_, err = db.Exec(`
+			CREATE TABLE IF NOT EXISTS dhcp_packets (
+				id        bigserial primary key,
+				ts        timestamptz not null,
+				client    macaddr not null,
+				agent     varchar(256),
+				ip        inet not null,
+				leasetime integer,
+				packet    text
+			)
+		`)
 	case "mysql":
 		_, err = db.Exec(`CREATE TABLE IF NOT EXISTS dhcp_packets (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
