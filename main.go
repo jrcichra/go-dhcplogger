@@ -17,18 +17,28 @@ import (
 	_ "net/http/pprof"
 )
 
-func main() {
-	iface := flag.String("interface", "", "Interface to capture packets on")
-	dbType := flag.String("dbtype", "postgres", "Database type")
-	dbDSN := flag.String("dsn", "", "Database DSN")
-	workers := flag.Int("workers", 4, "Number of goroutines handling packets")
-	retries := flag.Int("retries", 30, "Retry count for sql operations")
-	maxQueueLength := flag.Int("max-queue-length", 1000, "Maximum number of dhcp packets to hold in queue")
+type cfg struct {
+	Iface          string
+	DBType         string
+	DSN            string
+	Workers        int
+	Retries        int
+	MaxQueueLength int
+}
 
+func main() {
+	var cfg cfg
+
+	flag.StringVar(&cfg.Iface, "interface", "", "Interface to capture packets on")
+	flag.StringVar(&cfg.DBType, "dbtype", "postgres", "Database type")
+	flag.StringVar(&cfg.DSN, "dsn", "", "Database DSN")
+	flag.IntVar(&cfg.Workers, "workers", 4, "Number of goroutines handling packets")
+	flag.IntVar(&cfg.Retries, "retries", 30, "Retry count for sql operations")
+	flag.IntVar(&cfg.MaxQueueLength, "max-queue-length", 1000, "Maximum number of dhcp packets to hold in queue")
 	flag.Parse()
 
-	if *iface == "" {
-		panic(fmt.Errorf("No interface specified"))
+	if cfg.Iface == "" {
+		panic(fmt.Errorf("no interface specified"))
 	}
 
 	// start profiler
@@ -36,17 +46,19 @@ func main() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
 
-	feeder, err := newFeeder(*dbType, *dbDSN, *maxQueueLength, *retries)
+	feeder, err := newFeeder(cfg.DBType, cfg.DSN, cfg.MaxQueueLength, cfg.Retries)
 	if err != nil {
 		panic(err)
 	}
 
-	feeder.Run(*workers)
+	feeder.Run(cfg.Workers)
+	defer feeder.Close()
 
-	handle, err := pcap.OpenLive(*iface, 1600, true, time.Second)
+	handle, err := pcap.OpenLive(cfg.Iface, 1600, true, time.Second)
 	if err != nil {
 		panic(err)
 	}
+	defer handle.Close()
 
 	// Filter for bootp reply packets
 	if err := handle.SetBPFFilter("udp and (src port 67 or src port 68)"); err != nil {
@@ -56,7 +68,7 @@ func main() {
 	ps := gopacket.NewPacketSource(handle, handle.LinkType())
 	pchan := ps.Packets()
 
-	termsig := make(chan os.Signal)
+	termsig := make(chan os.Signal, 1)
 	signal.Notify(termsig, syscall.SIGTERM, syscall.SIGINT)
 
 LOOP:
@@ -66,14 +78,12 @@ LOOP:
 			select {
 			case feeder.queue <- raw:
 			default:
-				log.Println("Queue overflow")
+				log.Println("queue overflow")
 			}
 		case <-termsig:
 			break LOOP
 		}
 	}
 
-	fmt.Println("Exiting...")
-	handle.Close()
-	feeder.Close()
+	fmt.Println("exiting...")
 }

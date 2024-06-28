@@ -9,7 +9,7 @@ Package for capturing and logging all sent DHCPACK packets on an interface. May 
 Packets are sent to a PostgreSQL database, the table may be prepared with the following statement:
 
 ```sql
-CREATE TABLE dhcp4_log (
+CREATE TABLE dhcp_packets (
     id        bigserial primary key,
     ts        timestamptz not null,
     client    macaddr not null,
@@ -29,6 +29,7 @@ The program may be run as:
 ```
 
 For all switches and defaults, see
+
 ```shell
 # ./go-dhcplogger -h
 ```
@@ -36,4 +37,3 @@ For all switches and defaults, see
 ## Operation
 
 The program starts listening for dhcp packets on the specified interface. Each packet is parsed and stored in SQL. 4 goroutines are used for this. If for some reason the sql is unavailable, up to `-max-queue-length` packets will be queued. All packets are retried `-retries` times with 1 second delays, then dropped.
-
